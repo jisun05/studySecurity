@@ -3,50 +3,50 @@ package com.example.studysecurity;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.security.auth.login.LoginException;
 import java.util.Date;
 
 @Component
 public class JwtTokenGenerator {
 
-    @Value("${jwt.secret-key}")
+    @Value("${jwt.secret_key}") // application.yml에서 secret_key 가져오기
     private String secretKey;
+
     @Value("${jwt.expire-length}")
     private long expireTimeMilliSecond;
 
     public String generateToken(final String id) {
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new IllegalStateException("jwt.secret_key가 application.yml에 설정되지 않았습니다.");
+        }
+
         final Claims claims = Jwts.claims();
         claims.put("memberId", id);
         final Date now = new Date();
         final Date expiredDate = new Date(now.getTime() + expireTimeMilliSecond);
 
-        // URL-safe Base64 인코딩을 위해 JWT의 compact() 메서드를 사용
         return Jwts.builder()
                 .setClaims(claims)
                 .setIssuedAt(now)
                 .setExpiration(expiredDate)
-                .signWith(SignatureAlgorithm.HS256, secretKey)
-                .compact();  // URL-safe Base64로 토큰 생성
+                .signWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(secretKey)), SignatureAlgorithm.HS256)
+                .compact();
     }
 
     public String extractMemberId(final String token) {
         try {
-            return Jwts.parser()
-                    .setSigningKey(secretKey)
+            return Jwts.parserBuilder()
+                    .setSigningKey(Keys.hmacShaKeyFor(Decoders.BASE64.decode(secretKey))) // 수정된 부분
+                    .build()
                     .parseClaimsJws(token)
                     .getBody()
-                    .get("memberId")
-                    .toString();
+                    .get("memberId", String.class);
         } catch (final Exception error) {
-            try {
-                throw new LoginException("Invalid access token");
-            } catch (LoginException e) {
-                throw new RuntimeException(e);
-            }
+            throw new RuntimeException("Invalid access token", error);
         }
     }
 }
